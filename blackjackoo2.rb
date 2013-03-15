@@ -11,7 +11,7 @@ class Deck
     @suits = ['Clubs', 'Diamonds', 'Hearts', 'Spades']
     @ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'Jack', 'Queen', 'King', 'Ace']
     @cards = [] 
-    $deck = make_deck
+    @deck = make_deck
   end
 
   def make_deck
@@ -28,6 +28,7 @@ class Deck
      @cards.pop
   end
 end
+
 
 class Card
   
@@ -72,16 +73,31 @@ class Hand
     @sum = 0
   end
   
-  def get_card
+  def get_card hidden = false
     # calls Deck.deal_card to get a card
     # adds it to @cards
+    @hidden = hidden
     @draw = @deck.deal_card
-    @cards <<@draw
+    if @hidden == true
+    @draw.hidden = true
+    end
+    @cards << @draw
     return @draw.name
+  end
+  
+  def show_hidden
+    @cards.each do |card|
+     if card.hidden == true
+       return "the #{card.name}."
+     else
+       return 'no hidden cards'
+    end
+    end
   end
   
   def check_hand
     # populates the values array
+    @values = []
     @cards.each do |card|
       @values << card.value
     end
@@ -92,26 +108,33 @@ class Hand
       end
     end
     # sums value
-    @sum = @values.inject(:+)
+    @sum = 0
+    for i in @values
+      @sum = @sum + i
+    end
     # if value > 21, replaces an 11 with a 1
-    return eval
+    return evaluate
   end
 
-  def eval
+  def evaluate
     if @sum < 21
       @sum
     elsif  @sum == 21
-     'blackjack'
+     @sum
     elsif @sum > 21 && @aces == 0
-      'busted'
+     86
     else
-      @sum = @sum - 10
-      eval
+      @aces.times do
+        until @sum < 21
+        @sum = @sum - 10
+        end
+      end
+      @sum
     end
-  end
+   end
 end
 
-class Talker
+class Say
   
   #pings various places for variables
   #communicates with the user
@@ -119,54 +142,50 @@ class Talker
 
   attr_accessor :input
 
-  def announce_start
+  def self.announce_start
     puts 'Welcome to Blackjack!'
   end
 
-  def announce_card player, card
-    @player = player
-    @card = card
-    puts "#{@player.capitalize} drew the #{card}."
+  def self.announce_card player, card
+    puts "#{player.capitalize} drew the #{card}."
    end
+   
 
-  def announce_hidden player
-    @player = player
-    puts "#{@player} drew a face-down card"
+  def self.announce_hidden player
+    puts "#{player} drew a face-down card"
   end
 
-  def announce_show player, card
-    @player = player
-    @card = card
-    puts "#{@player} shows the #{@card}"
+  def self.announce_show player, card
+    puts "#{player} shows #{card}"
   end
 
-  def announce_winner winner 
-    @winner = winner
-    @verb = 'win'
-    if @winner != 'You'
-      @verb = 'wins'
+  def self.announce_winner winner 
+    @verb = 'wins'
+    if winner == 'You'
+      @verb = 'win'
     end
-    puts "#{@winner} #{@verb}!"
+    puts "#{winner} #{@verb}!"
   end
 
-  def announce_blackjack
+  def self.announce_blackjack
     puts "Blackjack!"
   end
   
-  def announce_push
+  def self.announce_push
     puts "It's a push! No winner."
   end
   
-  def announce_bust player
-    @player = player
-    if @player.downcase == 'you'
-      puts "You busted. Game over!"
+  def self.announce_bust player
+    if player.downcase == 'you'
+      puts "You busted. Game over!" 
+      exit
     else
-      puts "Dealer busted. You win!"
+      puts "Dealer busted. Game over!"
+      exit
     end
   end
 
-  def get_next_move
+  def self.get_next_move
     # asks user for next move
     puts "What do you want to do?"
     puts "H = Hit, S = Stand"
@@ -186,44 +205,49 @@ end
 class Game
 
   def initialize
-    @say = Talker.new
+    Say.announce_start
     @deck = Deck.new
     @user_hand = Hand.new('user', @deck)
     @dealer_hand = Hand.new('dealer', @deck)
-    @say.announce_start
-    first_deal
   end
+  
+  def start
+  	first_deal 
+  	player_turn 
+  	dealer_turn 
+  end  
 
-  def first_deal   # still very procedural!!!!
-    
+  def first_deal   
+    @done = false
     # draw face-up card for player
     @first = @user_hand.get_card
-    @say.announce_card('You', @first)
+    Say.announce_card('You', @first)
     
     # draw hidden card for dealer
-    @second = @dealer_hand.get_card #figure out to make this hidden
-    @say.announce_hidden('Dealer')
+    @second = @dealer_hand.get_card(true) #figure out to make this hidden
+    Say.announce_hidden('Dealer')
     
     # draw face-up card for player
     @third = @user_hand.get_card
-    @say.announce_card('You', @third)
+    Say.announce_card('You', @third)
     
     # draw face-up card for dealer
     @fourth = @dealer_hand.get_card
-    @say.announce_card('Dealer', @third)
+    Say.announce_card('Dealer', @fourth)
     
     # check player hand for blackjack before next turn
     @result = @user_hand.check_hand
-    if @result == 'blackjack'
-      @say.announce_blackjack
-      if dealer_hand.check_hand != 'blackjack'
-        @say.announce_winner('You')
+       if @result == 21
+      Say.announce_blackjack
+      if @dealer_hand.check_hand != 21
+        Say.announce_winner('You')
       else
-        #show the dealer's hidden card
-        @say.announce_push
+        @hidden = @dealer_hand.show_hidden
+        Say.announce_show('Dealer', @hidden)
+        Say.announce_push
       end
     else
-      player_turn
+      @done = true
     end
     # if player == blackjack, does dealer show 10 or A?
     # if yes, flip dealer card
@@ -233,14 +257,27 @@ class Game
   end
 
   def player_turn
-    @move = @say.get_next_move
-    if @move == 'h'
-      @next = @user_hand.get_card
-      @say.announce_card('You', @next)
-      @user_hand.check_hand
-    elsif @move == 's'
-      dealer_turn
-    end 
+   @done2 = false
+   while @done2 == false
+     @move = Say.get_next_move
+     if @move == 'h'
+       @next = @user_hand.get_card
+       Say.announce_card('You', @next)
+       @result = @user_hand.check_hand
+       if @result == 'blackjack'
+         Say.announce_blackjack
+         Say.announce_winner('You')
+         @done2 = true
+         exit
+       elsif @result == 'busted'
+         Say.announce_bust('You')
+         @done2 = true 
+         exit
+       end
+     elsif @move == 's'
+       @done2 = true
+     end 
+   end
     # if stand, dealer turn
     # while hit
     #  - draw card
@@ -250,26 +287,54 @@ class Game
   end
 
   def dealer_turn
-    # analyze user hand vs dealer hand
+    @done3 = false
+    @hidden = @dealer_hand.show_hidden
+    Say.announce_show('Dealer', @hidden)
+    @done3 = true
+    @user_sum = @user_hand.check_hand
+    puts "user total is #{@user_sum}"
+    @dealer_sum = @dealer_hand.check_hand
+    puts "dealer total is #{@dealer_sum}"
     # while < user and < 17, hit
-    # else stand
-    # calculate and announce winner
+    until @dealer_sum > 16
+      @next_card = @dealer_hand.get_card
+      Say.announce_card('Dealer',@next_card)
+      @dealer_sum = @dealer_hand.check_hand
+    end
+    if @dealer_sum == 21
+      Say.announce_blackjack
+      Say.announce_winner('Dealer')
+      exit
+    elsif @dealer_sum == 86
+      Say.announce_bust('Dealer')
+      Say.announce_winner('You')
+      exit
+    else
+      who_won
+    end
   end
   
-  def who_won
-    @user_sum = @user_hand.sum
-    @dealer_sum = @dealer_hand.sum
+  def who_won 
+    @winner = ''
+    @user_sum = @user_hand.check_hand
+    @dealer_sum = @dealer_hand.check_hand
     if @user_sum > @dealer_sum
-      return ['You','Dealer']
+      @winner = 'You'
     elsif @user_sum == @dealer_sum
-      return ['Push','Push']
+      @winner = 'Nobody'
     elsif @user_sum < @dealer_sum
-      return ['Dealer','You']
+      @winner = 'Dealer'
+    else
+      puts "Sorry, we're having technical difficulties"
     end
+  Say.announce_winner(@winner)
+  exit
   end
 
 end	
 
 game = Game.new
+game.start
 
-# classes: Deck, Card, Hand, Talker, Game
+# classes: Deck, Card, Hand, Say, Game
+ 
